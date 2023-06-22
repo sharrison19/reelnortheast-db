@@ -11,6 +11,12 @@ function auth(req, res, next) {
     token = token.split("Bearer ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
+    const newToken = jwt.sign(
+      { userId: decoded.userId, username: decoded.username },
+      process.env.JWT_SECRET,
+      { expiresIn: 3600 }
+    );
+    res.set("token", newToken);
     next();
   } catch (err) {
     res.status(400).json({
