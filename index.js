@@ -6,6 +6,14 @@ const auth = require("./middleware/auth");
 const cors = require("cors");
 require("dotenv").config();
 const getFormattedDate = require("./utility/formattedDate");
+const cloudinary = require("cloudinary").v2;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.API_KEY,
+  api_secret: process.env.API_SECRET,
+  secure: true,
+});
 
 const bcrypt = require("bcryptjs");
 
@@ -34,6 +42,8 @@ const commentSchema = new mongoose.Schema({
   time: { type: Date, default: Date.now },
 });
 
+commentSchema.add({ replies: [commentSchema] });
+
 const threadSchema = new mongoose.Schema({
   title: String,
   author: String,
@@ -43,24 +53,22 @@ const threadSchema = new mongoose.Schema({
   totalComments: Number,
   totalViews: { type: Number, default: 0 },
   views: [String],
-  categories: [String], // Add the categories field
+  categories: [String],
   time: { type: Date, default: Date.now },
 });
 
 const profileSchema = new mongoose.Schema({
-  username: String,
+  username: { type: String, immutable: true, unique: true },
   name: String,
   state: String,
   biography: String,
   profilePicture: String,
-  email: String,
+  email: { type: String, immutable: true, unique: true },
   userId: String,
-  socialMediaLinks: [
-    {
-      url: String,
-      platform: String,
-    },
-  ],
+  facebook: String,
+  twitter: String,
+  instagram: String,
+  youtube: String,
 });
 
 // Create a Mongoose model based on the signupSchema
@@ -80,11 +88,11 @@ app.post("/signup", (req, res) => {
 
     const userUsernamePromise = User.findOne({ username });
     Promise.all([userEmailPromise, userUsernamePromise]).then((responses) => {
-      const existingEmail = responses[1];
+      const existingEmail = responses[0];
       if (existingEmail) {
         return res.status(409).json({ message: "Email already exists" });
       }
-      const existingUsername = responses[2];
+      const existingUsername = responses[1];
       if (existingUsername) {
         return res.status(409).json({ message: "Username already exists" });
       }
@@ -114,7 +122,6 @@ app.post("/signup", (req, res) => {
               "https://res.cloudinary.com/reel-northeast-cloud/image/upload/v1687216166/defaultprofilepicture.jpg",
             email,
             userId: newUser._id,
-            socialMediaLinks: [],
           });
 
           const profilePromise = newProfile.save();
@@ -213,12 +220,63 @@ app.post("/forum/:id/comments", auth, async (req, res) => {
       author,
       content,
       date: getFormattedDate(),
+      replies: [],
     };
 
-    await Thread.updateOne(
+    const newThread = await Thread.findOneAndUpdate(
       { _id: id },
-      { $push: { comments: newComment }, $inc: { totalComments: 1 } }
+      { $push: { comments: newComment }, $inc: { totalComments: 1 } },
+      { new: true }
     );
+
+    res.status(201).json(newThread);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "An error occurred" });
+  }
+});
+
+app.post("/forum/:id/comments/:commentId/reply", auth, async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const { content } = req.body;
+    const author = req.user.username;
+
+    const thread = await Thread.findById(id);
+    if (!thread) {
+      return res.status(404).json({ message: "Thread not found" });
+    }
+
+    const newComment = {
+      author,
+      content,
+      date: getFormattedDate(),
+      _id: new mongoose.Types.ObjectId(),
+    };
+
+    const updateCommentAndPush = (comments) => {
+      for (let i = 0; i < comments.length; i++) {
+        const comment = comments[i];
+        if (comment._id.toString() === commentId) {
+          comment.replies.push(newComment);
+          return true;
+        }
+        if (comment.replies.length > 0) {
+          const updated = updateCommentAndPush(comment.replies);
+          if (updated) return true;
+        }
+      }
+      return false;
+    };
+
+    const commentUpdated = updateCommentAndPush(thread.comments);
+    if (!commentUpdated) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    thread.totalComments += 1;
+
+    await thread.save();
 
     res.status(201).json(thread);
   } catch (error) {
@@ -238,13 +296,25 @@ app.put("/profile", auth, async (req, res) => {
       email,
       website,
       socialMediaLinks,
+      profilePicture,
     } = req.body;
 
-    // Perform input validation
     if (!username || !name || !state || !email) {
       return res.status(400).json({ message: "Required fields are missing" });
     }
 
+    const facebook = socialMediaLinks.filter(
+      (link) => link.platform === "facebook"
+    );
+    const twitter = socialMediaLinks.filter(
+      (link) => link.platform === "twitter"
+    );
+    const instagram = socialMediaLinks.filter(
+      (link) => link.platform === "instagram"
+    );
+    const youtube = socialMediaLinks.filter(
+      (link) => link.platform === "youtube"
+    );
     const updatedProfile = {
       username,
       name,
@@ -252,10 +322,14 @@ app.put("/profile", auth, async (req, res) => {
       biography,
       email,
       website,
-      socialMediaLinks,
+      facebook: facebook.length > 0 ? facebook[0].url : "",
+      twitter: twitter.length > 0 ? twitter[0].url : "",
+      instagram: instagram.length > 0 ? instagram[0].url : "",
+      youtube: youtube.length > 0 ? youtube[0].url : "",
+      profilePicture,
     };
 
-    const profile = await Profile.updateOne({ userId }, updatedProfile, {
+    const profile = await Profile.findOneAndUpdate({ userId }, updatedProfile, {
       new: true,
     });
 
@@ -275,11 +349,10 @@ app.put("/profile", auth, async (req, res) => {
 app.put("/forum/:threadId/views", async (req, res) => {
   try {
     const { threadId } = req.params;
-    if (!threadId) {
+    if (!mongoose.Types.ObjectId.isValid(threadId)) {
       return res.status(400).json({ message: "Invalid threadId" });
     }
 
-    // Update the thread to increment views and save the updated thread
     const updatedThread = await Thread.findByIdAndUpdate(
       threadId,
       { $inc: { totalViews: 1 } },
@@ -297,9 +370,88 @@ app.put("/forum/:threadId/views", async (req, res) => {
   }
 });
 
+app.put("/forum/:id/comments/:commentId", auth, async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+    const { content } = req.body;
+
+    const thread = await Thread.findById(id);
+    if (!thread) {
+      return res.status(404).json({ message: "Thread not found" });
+    }
+
+    const commentIndex = thread.comments.findIndex(
+      (comment) => comment._id.toString() === commentId
+    );
+    if (commentIndex === -1) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    const comment = thread.comments[commentIndex];
+
+    if (comment.author !== req.user.username) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    if (content) {
+      comment.content = content;
+    }
+
+    await thread.save();
+
+    res.status(200).json(thread);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "An error occurred" });
+  }
+});
+
+app.delete("/forum/:id/comments/:commentId", auth, async (req, res) => {
+  try {
+    const { id, commentId } = req.params;
+
+    const thread = await Thread.findById(id);
+    if (!thread) {
+      return res.status(404).json({ message: "Thread not found" });
+    }
+
+    const commentIndex = thread.comments.findIndex(
+      (comment) => comment._id.toString() === commentId
+    );
+    if (commentIndex === -1) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    const comment = thread.comments[commentIndex];
+
+    if (comment.author !== req.user.username) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    comment.author = "";
+
+    comment.content = "Comment was deleted";
+
+    await thread.save();
+
+    res.status(200).json(thread);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "An error occurred" });
+  }
+});
+
 app.get("/forum/threads", async (req, res) => {
-  const foundThreads = await Thread.find({});
-  res.json(foundThreads);
+  try {
+    const foundThreads = await Thread.find(
+      {},
+      "_id title author content date totalComments totalViews categories time"
+    );
+    res.json(foundThreads);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "An internal server error occurred" });
+  }
 });
 
 app.get("/forum/:threadId", async (req, res) => {
@@ -325,22 +477,94 @@ app.get("/forum/:threadId", async (req, res) => {
 app.get("/profile", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
-
+    console.log(userId);
     if (!userId) {
       return res.status(400).json({ message: "Invalid Profile Id" });
     }
 
-    const profile = await Profile.findOne({ userId });
+    let profile = await Profile.findOne({ userId })
+      .lean()
+      .exec();
 
     if (!profile) {
       return res.status(404).json({ message: "Profile not found" });
     }
+
+    profile = {
+      ...profile,
+      socialMediaLinks: [
+        { platform: "facebook", url: profile.facebook },
+        { platform: "twitter", url: profile.twitter },
+        { platform: "instagram", url: profile.instagram },
+        { platform: "youtube", url: profile.youtube },
+      ],
+    };
+
+    delete profile.twitter;
+    delete profile.facebook;
+    delete profile.instagram;
+    delete profile.youtube;
 
     res.status(200).json(profile);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "An internal server error occurred" });
   }
+});
+
+app.get("/profile/:username", async (req, res) => {
+  try {
+    const username = req.params.username;
+
+    console.log("Username:", username);
+
+    const profile = await Profile.findOne({ username });
+
+    console.log("Profile:", profile);
+
+    if (!profile) {
+      console.log("Profile not found");
+      return res.status(404).json({ message: "Profile not found" });
+    }
+
+    console.log("Profile found");
+
+    res.status(200).json(profile);
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "An internal server error occurred" });
+  }
+});
+
+app.get("/forum/search/:searchQuery", (req, res) => {
+  const searchQuery = req.params.searchQuery;
+
+  if (!searchQuery || searchQuery.trim() === "") {
+    return res.status(400).json({ message: "Invalid search query" });
+  }
+
+  const criteria = {
+    $or: [
+      { title: { $regex: searchQuery, $options: "i" } },
+      { content: { $regex: searchQuery, $options: "i" } },
+      { author: { $regex: searchQuery, $options: "i" } },
+    ],
+  };
+
+  Thread.find(criteria)
+    .then((searchResults) => {
+      // if (searchResults.length === 0) {
+      //   return res
+      //     .status(404)
+      //     .json({ message: "No threads found for this search query." });
+      // }
+
+      res.json(searchResults);
+    })
+    .catch((error) => {
+      console.error(error);
+      res.status(500).json({ error: "An error occurred during the search." });
+    });
 });
 
 app.get("/protected", auth, (req, res) => {
