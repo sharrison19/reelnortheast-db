@@ -24,7 +24,7 @@ const app = express();
 app.use(bodyParser.json());
 app.use(express.static(publicPath));
 
-mongoose.connect("mongodb://127.0.0.1:27017/reel_northeast");
+mongoose.connect(process.env.MONGO_URL + "/reel_northeast");
 mongoose.connection.on("connected", () => {
   console.log("Connected to MongoDB");
 });
