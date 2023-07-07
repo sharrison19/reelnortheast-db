@@ -27,22 +27,24 @@ app.use(express.static(publicPath));
 const databaseURL = process.env.MONGO_URL
   ? process.env.MONGO_URL
   : process.env.MONGO_LOCAL_URL;
+try {
+  if (process.env.MONGO_URL) {
+    const fixieData = process.env.FIXIE_SOCKS_HOST.split(
+      new RegExp("[/(:\\/@/]+")
+    );
 
-if (process.env.MONGO_URL) {
-  const fixieData = process.env.FIXIE_SOCKS_HOST.split(
-    new RegExp("[/(:\\/@/]+")
-  );
-
-  mongoose.connect(process.env.MONGO_URL, {
-    proxyUsername: fixieData[0],
-    proxyPassword: fixieData[1],
-    proxyHost: fixieData[2],
-    proxyPort: parseInt(fixieData[3]),
-  });
-} else {
-  mongoose.connect(process.env.MONGO_LOCAL_URL);
+    mongoose.connect(process.env.MONGO_URL, {
+      proxyUsername: fixieData[0],
+      proxyPassword: fixieData[1],
+      proxyHost: fixieData[2],
+      proxyPort: parseInt(fixieData[3]),
+    });
+  } else {
+    mongoose.connect(process.env.MONGO_LOCAL_URL);
+  }
+} catch (error) {
+  console.log(error);
 }
-
 mongoose.connection.on("connected", () => {
   console.log("Connected to MongoDB");
 });
