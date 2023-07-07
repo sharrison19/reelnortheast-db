@@ -33,14 +33,14 @@ if (process.env.MONGO_URL) {
     new RegExp("[/(:\\/@/]+")
   );
 
-  mongoose.connect(process.env.MONGO_URL + "/reel_northeast", {
+  mongoose.connect(process.env.MONGO_URL, {
     proxyUsername: fixieData[0],
     proxyPassword: fixieData[1],
     proxyHost: fixieData[2],
     proxyPort: parseInt(fixieData[3]),
   });
 } else {
-  mongoose.connect(process.env.MONGO_LOCAL_URL + "/reel_northeast");
+  mongoose.connect(process.env.MONGO_LOCAL_URL);
 }
 
 mongoose.connection.on("connected", () => {
