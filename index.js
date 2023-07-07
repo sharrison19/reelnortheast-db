@@ -24,7 +24,25 @@ const app = express();
 app.use(bodyParser.json());
 app.use(express.static(publicPath));
 
-mongoose.connect(process.env.MONGO_URL + "/reel_northeast");
+const databaseURL = process.env.MONGO_URL
+  ? process.env.MONGO_URL
+  : process.env.MONGO_LOCAL_URL;
+
+if (process.env.MONGO_URL) {
+  const fixieData = process.env.FIXIE_SOCKS_HOST.split(
+    new RegExp("[/(:\\/@/]+")
+  );
+
+  const db = await mongoose.connect(process.env.MONGO_URL + "/reel_northeast", {
+    proxyUsername: fixieData[0],
+    proxyPassword: fixieData[1],
+    proxyHost: fixieData[2],
+    proxyPort: parseInt(fixieData[3]),
+  });
+} else {
+  mongoose.connect(process.env.MONGO_LOCAL_URL + "/reel_northeast");
+}
+
 mongoose.connection.on("connected", () => {
   console.log("Connected to MongoDB");
 });
