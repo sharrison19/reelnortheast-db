@@ -33,7 +33,7 @@ if (process.env.MONGO_URL) {
     new RegExp("[/(:\\/@/]+")
   );
 
-  const db = await mongoose.connect(process.env.MONGO_URL + "/reel_northeast", {
+  mongoose.connect(process.env.MONGO_URL + "/reel_northeast", {
     proxyUsername: fixieData[0],
     proxyPassword: fixieData[1],
     proxyHost: fixieData[2],
