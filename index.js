@@ -7,6 +7,7 @@ const cors = require("cors");
 require("dotenv").config();
 const getFormattedDate = require("./utility/formattedDate");
 const cloudinary = require("cloudinary").v2;
+const path = require("path");
 
 cloudinary.config({
   cloud_name: process.env.CLOUD_NAME,
@@ -17,16 +18,17 @@ cloudinary.config({
 
 const bcrypt = require("bcryptjs");
 
+const publicPath = path.join(__dirname, "./public");
+
 const app = express();
 app.use(bodyParser.json());
+app.use(express.static(publicPath));
 
-// Connect to MongoDB using Mongoose
 mongoose.connect("mongodb://127.0.0.1:27017/reel_northeast");
 mongoose.connection.on("connected", () => {
   console.log("Connected to MongoDB");
 });
 
-// Create a Mongoose schema for the user
 const signupSchema = new mongoose.Schema({
   firstName: String,
   lastName: String,
@@ -71,15 +73,12 @@ const profileSchema = new mongoose.Schema({
   youtube: String,
 });
 
-// Create a Mongoose model based on the signupSchema
 const User = mongoose.model("User", signupSchema);
-
 const Thread = mongoose.model("Thread", threadSchema);
-
 const Profile = mongoose.model("Profile", profileSchema);
 
 app.use(cors({ origin: process.env.FRONT_END_URL, exposedHeaders: "token" }));
-// Define a route to handle user registration
+
 app.post("/signup", (req, res) => {
   try {
     const { firstName, lastName, email, username, password } = req.body;
@@ -110,7 +109,6 @@ app.post("/signup", (req, res) => {
             password: hash,
           });
 
-          // Save the new user to the database
           const savedUser = await newUser.save();
 
           const newProfile = new Profile({
@@ -125,7 +123,6 @@ app.post("/signup", (req, res) => {
           });
 
           const profilePromise = newProfile.save();
-          // Generate a JWT token
           const token = jwt.sign(
             { userId: newUser._id },
             process.env.JWT_SECRET,
@@ -134,7 +131,6 @@ app.post("/signup", (req, res) => {
             }
           );
 
-          // Return the token and user details to the client
           res.status(201).json({ token, user: savedUser });
         });
       });
@@ -145,31 +141,26 @@ app.post("/signup", (req, res) => {
   }
 });
 
-// Define a route to handle user authentication
 app.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Check if the user exists in the database
     const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ message: "Invalid username or password" });
     }
 
-    // Compare the plain text password with the hashed password
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
       return res.status(401).json({ message: "Invalid username or password" });
     }
 
-    // Generate a JWT token
     const token = jwt.sign(
       { userId: user._id, username },
       process.env.JWT_SECRET,
       { expiresIn: 3600 }
     );
 
-    // Return the token to the client
     res.json({ token });
   } catch (error) {
     console.error(error);
@@ -441,6 +432,54 @@ app.delete("/forum/:id/comments/:commentId", auth, async (req, res) => {
   }
 });
 
+app.delete(
+  "/forum/:id/comments/:commentId/replies/:replyId",
+  auth,
+  async (req, res) => {
+    try {
+      const { id, commentId, replyId } = req.params;
+
+      console.log("Thread ID:", id);
+      console.log("Comment ID:", commentId);
+      console.log("Reply ID:", replyId);
+
+      const thread = await Thread.findById(id);
+      if (!thread) {
+        return res.status(404).json({ message: "Thread not found" });
+      }
+
+      const comment = thread.comments.find(
+        (comment) => comment._id.toString() === commentId
+      );
+      if (!comment) {
+        return res.status(404).json({ message: "Comment not found" });
+      }
+
+      const reply = comment.replies.find(
+        (reply) => reply._id.toString() === replyId
+      );
+      if (!reply) {
+        return res.status(404).json({ message: "Reply not found" });
+      }
+
+      if (reply.author !== req.user.username) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
+      reply.author = "";
+
+      reply.content = "Reply was deleted";
+
+      await thread.save();
+
+      res.status(200).json(thread);
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: "An error occurred" });
+    }
+  }
+);
+
 app.get("/forum/threads", async (req, res) => {
   try {
     const foundThreads = await Thread.find(
@@ -553,12 +592,6 @@ app.get("/forum/search/:searchQuery", (req, res) => {
 
   Thread.find(criteria)
     .then((searchResults) => {
-      // if (searchResults.length === 0) {
-      //   return res
-      //     .status(404)
-      //     .json({ message: "No threads found for this search query." });
-      // }
-
       res.json(searchResults);
     })
     .catch((error) => {
@@ -569,6 +602,14 @@ app.get("/forum/search/:searchQuery", (req, res) => {
 
 app.get("/protected", auth, (req, res) => {
   res.json({ message: "Protected route accessed successfully" });
+});
+
+app.get("/*", (req, res) => {
+  res.sendFile(publicPath + "/index.html", (error) => {
+    if (error) {
+      res.status(500).send(error);
+    }
+  });
 });
 
 app.listen(5000, () => {

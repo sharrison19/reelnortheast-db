@@ -1,26 +1,10 @@
 const jwt = require("jsonwebtoken");
-const multer = require("multer");
-
-// Set up Multer storage
-const storage = multer.diskStorage({
-  destination: function(req, file, cb) {
-    // Set the destination folder for uploaded files
-    cb(null, "uploads/");
-  },
-  filename: function(req, file, cb) {
-    // Set the filename for uploaded files
-    cb(null, Date.now() + "-" + file.originalname);
-  },
-});
-
-// Create Multer instance
-const upload = multer({ storage: storage });
 
 function auth(req, res, next) {
   let token = req.header("Authorization");
   if (!token) {
     return res.status(401).json({
-      message: "No token located at Authorization header, authorization denied",
+      message: "User must log in to gain access",
     });
   }
   try {
@@ -33,24 +17,7 @@ function auth(req, res, next) {
       { expiresIn: 3600 }
     );
     res.set("token", newToken);
-
-    // Call the Multer middleware to handle file uploads
-    upload.single("file")(req, res, function(err) {
-      if (err instanceof multer.MulterError) {
-        // A Multer error occurred while uploading
-        return res.status(400).json({
-          message: "Error uploading file",
-        });
-      } else if (err) {
-        // An unknown error occurred
-        return res.status(500).json({
-          message: "Internal server error",
-        });
-      }
-
-      // No error occurred, proceed to the next middleware
-      next();
-    });
+    next();
   } catch (err) {
     res.status(400).json({
       message: "Token could not be verified",
