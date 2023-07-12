@@ -144,7 +144,7 @@ app.post("/signup", (req, res) => {
 
           const profilePromise = newProfile.save();
           const token = jwt.sign(
-            { userId: newUser._id },
+            { userId: newUser._id, username },
             process.env.JWT_SECRET,
             {
               expiresIn: 3600,
@@ -220,7 +220,11 @@ app.post("/forum", auth, async (req, res) => {
 app.post("/forum/:id/comments", auth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { author, content } = req.body;
+    const { content } = req.body;
+
+    const author = req.user.username;
+
+    console.log(author);
 
     const thread = await Thread.findById(id);
     if (!thread) {
@@ -252,6 +256,8 @@ app.post("/forum/:id/comments/:commentId/reply", auth, async (req, res) => {
     const { id, commentId } = req.params;
     const { content } = req.body;
     const author = req.user.username;
+
+    console.log(author);
 
     const thread = await Thread.findById(id);
     if (!thread) {
@@ -296,7 +302,7 @@ app.post("/forum/:id/comments/:commentId/reply", auth, async (req, res) => {
   }
 });
 
-app.put("/profile", auth, async (req, res) => {
+app.put("/user-profile", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
     const {
@@ -390,22 +396,31 @@ app.put("/forum/:id/comments/:commentId", auth, async (req, res) => {
     if (!thread) {
       return res.status(404).json({ message: "Thread not found" });
     }
+    const updateCommentWithEdit = (comments) => {
+      for (let i = 0; i < comments.length; i++) {
+        const comment = comments[i];
+        if (comment._id.toString() === commentId) {
+          if (comment.author !== req.user.username) {
+            return res.status(403).json({ message: "Unauthorized" });
+          }
 
-    const commentIndex = thread.comments.findIndex(
-      (comment) => comment._id.toString() === commentId
-    );
-    if (commentIndex === -1) {
+          if (content) {
+            comment.content = content;
+          }
+
+          return true;
+        }
+        if (comment.replies.length > 0) {
+          const updated = updateCommentWithEdit(comment.replies);
+          if (updated) return true;
+        }
+      }
+      return false;
+    };
+
+    const commentUpdated = updateCommentWithEdit(thread.comments);
+    if (!commentUpdated) {
       return res.status(404).json({ message: "Comment not found" });
-    }
-
-    const comment = thread.comments[commentIndex];
-
-    if (comment.author !== req.user.username) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
-
-    if (content) {
-      comment.content = content;
     }
 
     await thread.save();
@@ -426,22 +441,32 @@ app.delete("/forum/:id/comments/:commentId", auth, async (req, res) => {
       return res.status(404).json({ message: "Thread not found" });
     }
 
-    const commentIndex = thread.comments.findIndex(
-      (comment) => comment._id.toString() === commentId
-    );
-    if (commentIndex === -1) {
+    const updateCommentWithDeleted = (comments) => {
+      for (let i = 0; i < comments.length; i++) {
+        const comment = comments[i];
+        if (comment._id.toString() === commentId) {
+          if (comment.author !== req.user.username) {
+            return res.status(403).json({ message: "Unauthorized" });
+          }
+
+          comment.author = "";
+
+          comment.content = "Comment was deleted";
+
+          return true;
+        }
+        if (comment.replies.length > 0) {
+          const updated = updateCommentWithDeleted(comment.replies);
+          if (updated) return true;
+        }
+      }
+      return false;
+    };
+
+    const commentUpdated = updateCommentWithDeleted(thread.comments);
+    if (!commentUpdated) {
       return res.status(404).json({ message: "Comment not found" });
     }
-
-    const comment = thread.comments[commentIndex];
-
-    if (comment.author !== req.user.username) {
-      return res.status(403).json({ message: "Unauthorized" });
-    }
-
-    comment.author = "";
-
-    comment.content = "Comment was deleted";
 
     await thread.save();
 
@@ -451,54 +476,6 @@ app.delete("/forum/:id/comments/:commentId", auth, async (req, res) => {
     res.status(500).json({ message: "An error occurred" });
   }
 });
-
-app.delete(
-  "/forum/:id/comments/:commentId/replies/:replyId",
-  auth,
-  async (req, res) => {
-    try {
-      const { id, commentId, replyId } = req.params;
-
-      console.log("Thread ID:", id);
-      console.log("Comment ID:", commentId);
-      console.log("Reply ID:", replyId);
-
-      const thread = await Thread.findById(id);
-      if (!thread) {
-        return res.status(404).json({ message: "Thread not found" });
-      }
-
-      const comment = thread.comments.find(
-        (comment) => comment._id.toString() === commentId
-      );
-      if (!comment) {
-        return res.status(404).json({ message: "Comment not found" });
-      }
-
-      const reply = comment.replies.find(
-        (reply) => reply._id.toString() === replyId
-      );
-      if (!reply) {
-        return res.status(404).json({ message: "Reply not found" });
-      }
-
-      if (reply.author !== req.user.username) {
-        return res.status(403).json({ message: "Unauthorized" });
-      }
-
-      reply.author = "";
-
-      reply.content = "Reply was deleted";
-
-      await thread.save();
-
-      res.status(200).json(thread);
-    } catch (error) {
-      console.error(error);
-      res.status(500).json({ message: "An error occurred" });
-    }
-  }
-);
 
 app.get("/forum/threads", async (req, res) => {
   try {
@@ -533,7 +510,7 @@ app.get("/forum/:threadId", async (req, res) => {
   }
 });
 
-app.get("/profile", auth, async (req, res) => {
+app.get("/user-profile", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
     console.log(userId);
@@ -571,14 +548,15 @@ app.get("/profile", auth, async (req, res) => {
   }
 });
 
-app.get("/profile/:username", async (req, res) => {
+app.get("/user-profile/:username", async (req, res) => {
   try {
     const username = req.params.username;
 
     console.log("Username:", username);
 
-    const profile = await Profile.findOne({ username });
-
+    let profile = await Profile.findOne({ username })
+      .lean()
+      .exec();
     console.log("Profile:", profile);
 
     if (!profile) {
@@ -587,6 +565,21 @@ app.get("/profile/:username", async (req, res) => {
     }
 
     console.log("Profile found");
+
+    profile = {
+      ...profile,
+      socialMediaLinks: [
+        { platform: "facebook", url: profile.facebook },
+        { platform: "twitter", url: profile.twitter },
+        { platform: "instagram", url: profile.instagram },
+        { platform: "youtube", url: profile.youtube },
+      ],
+    };
+
+    delete profile.twitter;
+    delete profile.facebook;
+    delete profile.instagram;
+    delete profile.youtube;
 
     res.status(200).json(profile);
   } catch (error) {
