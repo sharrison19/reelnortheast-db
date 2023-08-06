@@ -224,8 +224,6 @@ app.post("/forum/:id/comments", auth, async (req, res) => {
 
     const author = req.user.username;
 
-    console.log(author);
-
     const thread = await Thread.findById(id);
     if (!thread) {
       return res.status(404).json({ message: "Thread not found" });
@@ -256,8 +254,6 @@ app.post("/forum/:id/comments/:commentId/reply", auth, async (req, res) => {
     const { id, commentId } = req.params;
     const { content } = req.body;
     const author = req.user.username;
-
-    console.log(author);
 
     const thread = await Thread.findById(id);
     if (!thread) {
@@ -316,7 +312,7 @@ app.put("/user-profile", auth, async (req, res) => {
       profilePicture,
     } = req.body;
 
-    if (!username || !name || !state || !email) {
+    if (!username || !name || !email) {
       return res.status(400).json({ message: "Required fields are missing" });
     }
 
@@ -513,7 +509,7 @@ app.get("/forum/:threadId", async (req, res) => {
 app.get("/user-profile", auth, async (req, res) => {
   try {
     const userId = req.user.userId;
-    console.log(userId);
+
     if (!userId) {
       return res.status(400).json({ message: "Invalid Profile Id" });
     }
@@ -552,19 +548,13 @@ app.get("/user-profile/:username", async (req, res) => {
   try {
     const username = req.params.username;
 
-    console.log("Username:", username);
-
     let profile = await Profile.findOne({ username })
       .lean()
       .exec();
-    console.log("Profile:", profile);
 
     if (!profile) {
-      console.log("Profile not found");
       return res.status(404).json({ message: "Profile not found" });
     }
-
-    console.log("Profile found");
 
     profile = {
       ...profile,
