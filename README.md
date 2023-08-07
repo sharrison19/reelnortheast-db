@@ -3,6 +3,14 @@
 ## Description
 Welcome to Reel Northeast, a fishing forum app that connects anglers, allows them to share fishing experiences, and exchange valuable tips and tricks. This application offers secure user authentication using JSON Web Tokens (JWT) and provides various features like user registration, login, profile management, and forum thread operations. Reel Northeast is built using React for the frontend, Node.js with the Express framework for the backend, and utilizes MongoDB for data storage.
 
+## Screenshots
+![reelnortheastimage1](https://github.com/sharrison19/reelnortheast-db/assets/123839116/5f1dc449-e1ba-40ab-9976-78db8d9d3ca6)
+![reelnortheastimage4](https://github.com/sharrison19/reelnortheast-db/assets/123839116/15d1e123-e2d0-4319-a5f1-65ccedf16530)
+![reelnortheastimage2](https://github.com/sharrison19/reelnortheast-db/assets/123839116/15a06ad3-569a-45ec-b672-ea82ba59ee30)
+![reelnortheastimage3](https://github.com/sharrison19/reelnortheast-db/assets/123839116/2a33e247-13be-4858-b7e3-8fe483e549e2)
+![reelnortheastimage6](https://github.com/sharrison19/reelnortheast-db/assets/123839116/c9c9aaa5-0415-411f-930e-3726828e7365)
+![reelnortheastimage5](https://github.com/sharrison19/reelnortheast-db/assets/123839116/4144637f-b61b-42ab-a3d5-f0f400ed7bb2)
+
 ## Key Features
 ### Forum Page
 The heart of Reel Northeast, the Forum page, provides a thriving community for fishing enthusiasts to engage in discussions and share their valuable fishing experiences. The user-friendly interface offers convenient search, category filtering, and sorting options based on the newest, oldest, most views, and most comments. Registered users can actively contribute to the dynamic community by creating new threads, and fostering interactive and lively discussions among anglers.
@@ -32,3 +40,4 @@ https://reel-northeast-ee6588df16dc.herokuapp.com/
 ## Get Involved
 
 Contributions to Reel Northeast are welcome! Feel free to open issues, submit pull requests, or provide feedback to help us improve the app and create an even better fishing community for anglers.
+
